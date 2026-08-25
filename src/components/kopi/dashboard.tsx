@@ -103,7 +103,7 @@ function DashboardInner() {
         <TxLogPanel logs={eco.logs} />
 
         <p className="pb-6 text-center font-mono text-[11px] text-muted-foreground">
-          KOPICATSOL MVP · Base Sepolia testnet · x402 settlement is simulated, no mainnet funds
+          KOPICATSOL · Base Sepolia testnet · x402 settlement executes on testnet, no mainnet funds
           move
         </p>
       </main>
