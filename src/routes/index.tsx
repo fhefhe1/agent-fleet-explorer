@@ -1,24 +1,47 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, ClientOnly } from "@tanstack/react-router";
+import { Suspense, lazy } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+// Wallet SDKs are browser-only: load the dashboard after hydration.
+const Dashboard = lazy(() => import("@/components/kopi/dashboard"));
+
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "KOPICATSOL — Agentic AI Economic Infrastructure" },
+      {
+        name: "description",
+        content:
+          "Connect a Base Sepolia wallet, deploy ERC-4337 agent smart accounts, enforce USDC spend policy, and settle x402 micro-payments.",
+      },
+      { property: "og:title", content: "KOPICATSOL — Agentic AI Economic Infrastructure" },
+      {
+        property: "og:description",
+        content:
+          "Web3 dashboard for autonomous AI agents paying per API call with HTTP 402 micro-payments on Base Sepolia.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Home,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function Booting() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="grid min-h-screen place-items-center">
+      <p className="font-mono text-xs tracking-widest text-muted-foreground">
+        INITIALIZING KOPICATSOL RUNTIME…
+      </p>
     </div>
+  );
+}
+
+function Home() {
+  return (
+    <ClientOnly fallback={<Booting />}>
+      <Suspense fallback={<Booting />}>
+        <Dashboard />
+      </Suspense>
+    </ClientOnly>
   );
 }
