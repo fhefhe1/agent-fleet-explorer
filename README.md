@@ -42,7 +42,7 @@ Create a Web3 Dashboard & Simulator for an "Agentic AI Economic Infrastructure" 
 
 - High visual scannability using clean data cards, live indicators, status badges (Active, Paused, Rate-limited), and intuitive modals.
 
-- Clean Code Structure using React, Tailwind CSS, Lucide icons, and Recharts for budget telemetry. jangan ulang kembali kalimat yang sudah di tulis di sini agar tidak mengambil kredit yang tersisa
+- Clean Code Structure using React, Tailwind CSS, Lucide icons, and Recharts for budget telemetry.
 
 This project was built with [Lovable](https://lovable.dev).
 
