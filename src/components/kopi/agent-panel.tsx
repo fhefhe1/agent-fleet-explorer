@@ -49,6 +49,7 @@ export function AgentPanel({
   onCreate,
   onUpdate,
   onRemove,
+  canDeploy = true,
 }: {
   agents: Agent[];
   selectedId: string | null;
@@ -62,6 +63,7 @@ export function AgentPanel({
   }) => Agent;
   onUpdate: (id: string, patch: Partial<Agent>) => void;
   onRemove: (id: string) => void;
+  canDeploy?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -98,7 +100,7 @@ export function AgentPanel({
         </span>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" className="ml-auto gap-1.5">
+            <Button size="sm" className="ml-auto gap-1.5" disabled={!canDeploy}>
               <Plus className="size-3.5" /> Deploy Agent
             </Button>
           </DialogTrigger>

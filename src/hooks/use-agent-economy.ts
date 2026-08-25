@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { predictSmartAccount } from "@/lib/web3";
+import type { Address } from "viem";
 import {
   makeTxHash,
   makeWallet,
@@ -35,6 +37,7 @@ export function useAgentEconomy() {
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
   const [steps, setSteps] = useState<X402Step[]>([]);
   const [running, setRunning] = useState(false);
+  const [faucetBalance, setFaucetBalance] = useState(0);
   const burstRef = useRef<Record<string, number[]>>({});
 
   useEffect(() => {
@@ -71,14 +74,8 @@ export function useAgentEconomy() {
     ]);
   }, []);
 
-  const connect = useCallback(() => {
-    setAddress(makeWallet());
-    setConnected(true);
-  }, []);
-
-  const disconnect = useCallback(() => {
-    setConnected(false);
-    setAddress(null);
+  const fundFaucet = useCallback(() => {
+    setFaucetBalance((b) => Number((b + 100).toFixed(6)));
   }, []);
 
   const createAgent = useCallback(
@@ -88,11 +85,16 @@ export function useAgentEconomy() {
       dailyLimit: number;
       paymaster: boolean;
       loopProtection: boolean;
-    }) => {
+    }, owner?: Address | string | null) => {
+      const salt = BigInt(Date.now());
+      const smartAccount =
+        owner && owner.startsWith("0x") && owner.length === 42
+          ? predictSmartAccount(owner as Address, salt)
+          : makeWallet();
       const agent: Agent = {
         id: nextId("agt"),
         ...input,
-        wallet: makeWallet(),
+        wallet: smartAccount,
         spent: 0,
         status: "active",
         success: 0,
@@ -106,7 +108,17 @@ export function useAgentEconomy() {
   );
 
   const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
-    setAgents((list) => list.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    setAgents((list) =>
+      list.map((a) => {
+        if (a.id !== id) return a;
+        const next = { ...a, ...patch };
+        // Budget cap drives status unless the operator explicitly toggled it.
+        if (patch.status === undefined && next.status !== "paused") {
+          next.status = next.spent >= next.dailyLimit ? "rate-limited" : "active";
+        }
+        return next;
+      }),
+    );
   }, []);
 
   const removeAgent = useCallback((id: string) => {
@@ -207,8 +219,8 @@ export function useAgentEconomy() {
   return {
     connected,
     address,
-    connect,
-    disconnect,
+    faucetBalance,
+    fundFaucet,
     network,
     setNetwork,
     agents,

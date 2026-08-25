@@ -9,11 +9,13 @@ export function Marketplace({
   agent,
   steps,
   running,
+  gate = null,
   onExecute,
 }: {
   agent: Agent | null;
   steps: X402Step[];
   running: boolean;
+  gate?: string | null;
   onExecute: (service: ApiService) => void;
 }) {
   const [selected, setSelected] = useState<string>(SERVICES[0]!.id);
@@ -65,7 +67,7 @@ export function Marketplace({
             <Button
               size="sm"
               className="gap-1.5"
-              disabled={!agent || running}
+              disabled={!agent || running || Boolean(gate)}
               onClick={() => onExecute(service)}
             >
               {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
@@ -73,7 +75,7 @@ export function Marketplace({
             </Button>
           </div>
           <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-            {agent ? `${agent.name} → ${service.name}` : "Select an agent to run a simulation"}
+            {gate ?? (agent ? `${agent.name} → ${service.name}` : "Select an agent")}
           </p>
 
           <ol className="mt-4 space-y-3">
