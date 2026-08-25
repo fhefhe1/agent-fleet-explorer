@@ -1,36 +1,40 @@
-import { Activity, ChevronDown, Copy, LogOut, Wallet } from "lucide-react";
+import { Activity, AlertTriangle, Droplets, ExternalLink } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useChainId, useReadContract, useSwitchChain } from "wagmi";
+import { formatUnits } from "viem";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { shorten } from "@/lib/agent-sim";
-import { toast } from "sonner";
-
-const NETWORKS = [
-  { id: "base-sepolia", label: "Base Sepolia", tag: "Testnet" },
-  { id: "base", label: "Base Mainnet", tag: "L2" },
-  { id: "arbitrum-sepolia", label: "Arbitrum Sepolia", tag: "Testnet" },
-];
+  TARGET_CHAIN_ID,
+  USDC_ADDRESS,
+  USDC_DECIMALS,
+  USDC_FAUCET_URL,
+  erc20Abi,
+} from "@/lib/web3";
 
 export function WalletBar({
-  connected,
-  address,
-  network,
-  onConnect,
-  onDisconnect,
-  onNetwork,
+  faucetBalance,
+  onFaucet,
 }: {
-  connected: boolean;
-  address: string | null;
-  network: string;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onNetwork: (id: string) => void;
+  faucetBalance: number;
+  onFaucet: () => void;
 }) {
-  const current = NETWORKS.find((n) => n.id === network) ?? NETWORKS[0]!;
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const wrongNetwork = isConnected && chainId !== TARGET_CHAIN_ID;
+
+  const { data: onchain } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    chainId: TARGET_CHAIN_ID,
+    query: { enabled: Boolean(address), refetchInterval: 20_000 },
+  });
+
+  const usdc =
+    (onchain ? Number(formatUnits(onchain as bigint, USDC_DECIMALS)) : 0) + faucetBalance;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -45,54 +49,53 @@ export function WalletBar({
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2 font-mono text-xs">
-                <span className="size-2 rounded-full bg-accent pulse-dot" />
-                {current.label}
-                <ChevronDown className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {NETWORKS.map((n) => (
-                <DropdownMenuItem key={n.id} onClick={() => onNetwork(n.id)} className="gap-3">
-                  <span className="text-sm">{n.label}</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">{n.tag}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {connected && address ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="gap-2 font-mono text-xs">
-                  <Wallet className="size-3.5" />
-                  {shorten(address)}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    void navigator.clipboard.writeText(address);
-                    toast.success("Address copied");
-                  }}
-                >
-                  <Copy className="size-3.5" /> Copy address
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onDisconnect}>
-                  <LogOut className="size-3.5" /> Disconnect
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button size="sm" className="gap-2" onClick={onConnect}>
-              <Wallet className="size-4" /> Connect Wallet
-            </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {isConnected && (
+            <div className="hidden items-center gap-2 rounded-md border border-border px-3 py-1.5 font-mono text-xs sm:flex">
+              <span className="text-muted-foreground">USDC</span>
+              <span className="text-accent">{usdc.toFixed(3)}</span>
+            </div>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!isConnected}
+            onClick={() => {
+              onFaucet();
+              window.open(USDC_FAUCET_URL, "_blank", "noopener,noreferrer");
+              toast.success("Test USDC credited to your Agent Fleet", {
+                description: "Circle faucet opened for real Base Sepolia USDC",
+              });
+            }}
+          >
+            <Droplets className="size-3.5" /> USDC Faucet
+            <ExternalLink className="size-3 opacity-60" />
+          </Button>
+
+          <ConnectButton chainStatus="icon" showBalance={false} />
         </div>
       </div>
+
+      {wrongNetwork && (
+        <div className="border-t border-destructive/40 bg-destructive/10">
+          <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
+            <AlertTriangle className="size-4 text-destructive" />
+            <p className="text-xs text-destructive">
+              Wrong network. KOPICATSOL settles on Base Sepolia Testnet (chain 84532).
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto h-7 text-xs"
+              onClick={() => switchChain({ chainId: TARGET_CHAIN_ID })}
+            >
+              Switch to Base Sepolia
+            </Button>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
