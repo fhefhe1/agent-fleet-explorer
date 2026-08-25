@@ -1,18 +1,21 @@
 import "@rainbow-me/rainbowkit/styles.css";
 
 import { useState, type ReactNode } from "react";
-import { RainbowKitProvider, darkTheme, getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { WagmiProvider } from "wagmi";
+import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
+import { WagmiProvider, createConfig } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
+import { coinbaseWallet, injected } from "wagmi/connectors";
 import { http } from "viem";
 
 export default function Web3Provider({ children }: { children: ReactNode }) {
   // Lazily built: connector setup touches browser globals.
   const [config] = useState(() =>
-    getDefaultConfig({
-      appName: "KOPICATSOL",
-      projectId: import.meta.env["VITE_WALLETCONNECT_PROJECT_ID"] ?? "kopicatsol_demo_project",
+    createConfig({
       chains: [baseSepolia],
+      connectors: [
+        injected({ shimDisconnect: true }),
+        coinbaseWallet({ appName: "KOPICATSOL", preference: "all" }),
+      ],
       transports: { [baseSepolia.id]: http() },
       ssr: false,
     }),
