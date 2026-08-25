@@ -1,6 +1,7 @@
-import { Radio } from "lucide-react";
+import { ExternalLink, Radio } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { shorten, type TxLog } from "@/lib/agent-sim";
+import { explorerTx } from "@/lib/web3";
 
 export function TxLogPanel({ logs }: { logs: TxLog[] }) {
   return (
