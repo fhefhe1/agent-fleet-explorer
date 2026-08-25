@@ -22,7 +22,7 @@ Create a Web3 Dashboard & Simulator for an "Agentic AI Economic Infrastructure" 
 
 - Loop Payment Protection toggle: Auto-pause agent wallet if >5 transactions occur within 10 seconds to same API endpoint.
 
-- Spending velocity indicator (charts showing real-time token depletion).
+- Spending velocity indicator.
 
 4. API Marketplace & x402 (HTTP 402) Payment Simulator:
 
