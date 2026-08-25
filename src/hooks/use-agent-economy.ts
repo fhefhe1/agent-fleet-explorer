@@ -29,9 +29,6 @@ const STEP_TEMPLATE: Array<{ label: string; detail: string }> = [
 ];
 
 export function useAgentEconomy() {
-  const [connected, setConnected] = useState(false);
-  const [address, setAddress] = useState<string | null>(null);
-  const [network, setNetwork] = useState("base-sepolia");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [logs, setLogs] = useState<TxLog[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
@@ -199,6 +196,7 @@ export function useAgentEconomy() {
         hash: makeTxHash(),
         note: agent.paymaster ? "Gas sponsored by Paymaster" : "Gas paid in USDC",
       });
+      setFaucetBalance((b) => Number(Math.max(0, b - service.price).toFixed(6)));
       setTelemetry((t) => {
         const d = new Date();
         const last = t[t.length - 1]?.spend ?? 0;
@@ -217,12 +215,8 @@ export function useAgentEconomy() {
   );
 
   return {
-    connected,
-    address,
     faucetBalance,
     fundFaucet,
-    network,
-    setNetwork,
     agents,
     createAgent,
     updateAgent,
