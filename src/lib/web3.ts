@@ -1,4 +1,4 @@
-import { encodePacked, getCreate2Address, keccak256, type Address } from "viem";
+import { encodePacked, getCreate2Address, keccak256, toHex, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
 
 /** Base Sepolia is the only chain KOPICATSOL settles on. */
@@ -36,7 +36,7 @@ export const erc20Abi = [
  * Same math shape as SimpleAccountFactory.getAddress(owner, salt): CREATE2 over
  * a proxy init-code hash, so the address is stable before deployment.
  */
-const PROXY_INIT_CODE_HASH = keccak256("0x603d3d8160223d3973kopicatsol4337proxy" as `0x${string}`);
+const PROXY_INIT_CODE_HASH = keccak256(toHex("kopicatsol-erc4337-simple-account-proxy"));
 
 export function predictSmartAccount(owner: Address, salt: bigint): Address {
   const salted = keccak256(encodePacked(["address", "uint256"], [owner, salt]));
