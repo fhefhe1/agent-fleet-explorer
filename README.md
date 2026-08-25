@@ -1,6 +1,6 @@
 # AgentFlow Wallet
 
-ticker KOPICATSOL, Create a Web3 Dashboard & Simulator for an "Agentic AI Economic Infrastructure" MVP. This platform manages automated crypto wallets and micro-payments for autonomous AI Agents using ERC-4337 (Account Abstraction) and HTTP 402 (x402 protocol) concept over a fast Layer-2 network (e.g., Base or Arbitrum).
+Create a Web3 Dashboard & Simulator for an "Agentic AI Economic Infrastructure" MVP. This platform manages automated crypto wallets and micro-payments for autonomous AI Agents using ERC-4337 (Account Abstraction) and HTTP 402 (x402 protocol) concept over a fast Layer-2 network (e.g., Base or Arbitrum).
 
 ### KEY FEATURES & UI COMPONENTS:
 
