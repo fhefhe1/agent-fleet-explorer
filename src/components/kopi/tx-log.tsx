@@ -56,7 +56,17 @@ export function TxLogPanel({ logs }: { logs: TxLog[] }) {
                     <span className="ml-2 text-[10px] text-muted-foreground">{l.note}</span>
                   )}
                 </td>
-                <td className="py-2.5 text-primary">{shorten(l.hash, 6)}</td>
+                <td className="py-2.5">
+                  <a
+                    href={explorerTx(l.hash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    {shorten(l.hash, 6)}
+                    <ExternalLink className="size-3 opacity-60" />
+                  </a>
+                </td>
               </tr>
             ))}
           </tbody>
