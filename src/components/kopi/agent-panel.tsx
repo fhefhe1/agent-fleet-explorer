@@ -181,10 +181,15 @@ export function AgentPanel({
           const pct = Math.min(100, (a.spent / a.dailyLimit) * 100);
           const selected = a.id === selectedId;
           return (
-            <button
+            <div
               key={a.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(a.id)}
-              className={`rounded-md border p-4 text-left transition-colors ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onSelect(a.id);
+              }}
+              className={`cursor-pointer rounded-md border p-4 text-left transition-colors ${
                 selected
                   ? "border-primary/60 bg-primary/5 glow"
                   : "border-border hover:border-primary/30"
@@ -267,7 +272,7 @@ export function AgentPanel({
                   </div>
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>
