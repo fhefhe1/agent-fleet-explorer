@@ -71,7 +71,7 @@ export function Marketplace({
               onClick={() => onExecute(service)}
             >
               {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-              Test AI Execution
+              Execute Onchain Call
             </Button>
           </div>
           <p className="mt-2 font-mono text-[11px] text-muted-foreground">
