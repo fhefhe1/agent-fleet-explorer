@@ -1,5 +1,4 @@
 import type { Address } from "viem";
-import { encodeAbiParameters } from "viem";
 
 /**
  * x402 Payment Protocol (v2.0)
@@ -180,21 +179,24 @@ export interface X402PaymentResponse {
 
 /**
  * Encodes the X-PAYMENT header value per spec.
+ * Uses btoa with URI component encoding to handle non-ASCII characters safely.
  */
 export function encodeX402PaymentHeader(data: X402PaymentPayload): string {
   const json = JSON.stringify(data);
-  return Buffer.from(json).toString("base64");
+  // btoa only handles Latin1, so encode to UTF-8 via URI component first
+  return btoa(unescape(encodeURIComponent(json)));
 }
 
 /**
  * Decodes and parses the X-PAYMENT-RESPONSE header.
  * Returns null if header is missing, empty, or invalid.
+ * Uses atob with URI component decoding to safely handle UTF-8.
  */
 export function parseX402PaymentResponse(headerValue: string | null): X402PaymentResponse | null {
   if (!headerValue) return null;
   try {
-    // Assume base64-encoded JSON per spec (confirm with facilitator)
-    const decoded = Buffer.from(headerValue, "base64").toString("utf-8");
+    // Decode base64 and convert from URI component encoding back to UTF-8
+    const decoded = decodeURIComponent(escape(atob(headerValue)));
     return JSON.parse(decoded) as X402PaymentResponse;
   } catch {
     return null;
