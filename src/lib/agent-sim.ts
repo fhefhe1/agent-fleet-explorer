@@ -1,3 +1,5 @@
+import { x402Url } from "@/lib/x402";
+
 export type AgentStatus = "active" | "paused" | "rate-limited";
 
 export interface Agent {
@@ -22,7 +24,10 @@ export interface ApiService {
   price: number;
   latency: string;
   category: string;
+  /** Settled through the real x402 flow against the live API host. */
+  x402?: boolean;
 }
+
 
 export interface TxLog {
   id: string;
@@ -73,11 +78,13 @@ export const SERVICES: ApiService[] = [
   {
     id: "svc-scraper",
     name: "Web Scraper API",
-    endpoint: "https://api.kopicat.dev/v1/scrape",
+    endpoint: "/v1/scrape",
     price: 0.001,
     latency: "230ms",
     category: "Data",
+    x402: true,
   },
+
   {
     id: "svc-serp",
     name: "SerpData API",
@@ -125,4 +132,9 @@ export function seedTelemetry(): TelemetryPoint[] {
     });
   }
   return pts;
+}
+
+/** Absolute URL for a service; x402 services resolve against the live API host. */
+export function serviceUrl(s: ApiService): string {
+  return s.x402 ? x402Url(s.endpoint) : s.endpoint;
 }

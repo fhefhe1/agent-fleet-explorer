@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { predictSmartAccount } from "@/lib/web3";
-import type { Address } from "viem";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
+import { erc20Abi, predictSmartAccount, USDC_ADDRESS, USDC_DECIMALS } from "@/lib/web3";
+import { parseChallenge, requestResource } from "@/lib/x402";
 import {
   makeTxHash,
   makeWallet,
   seedTelemetry,
+  serviceUrl,
   type Agent,
   type ApiService,
   type TelemetryPoint,
@@ -23,10 +26,11 @@ export interface X402Step {
 const STEP_TEMPLATE: Array<{ label: string; detail: string }> = [
   { label: "HTTP GET", detail: "Agent requests the protected resource" },
   { label: "402 Payment Required", detail: "Server replies with x402 payment challenge" },
-  { label: "EIP-712 Signature", detail: "Agent signs the micro-payment intent offchain" },
-  { label: "UserOperation → Bundler", detail: "ERC-4337 op sponsored by Paymaster" },
-  { label: "200 OK · Payload unlocked", detail: "Resource streamed back to the agent" },
+  { label: "Wallet Signed", detail: "Owner signs the USDC transfer in the wallet" },
+  { label: "Onchain Settlement", detail: "Base Sepolia confirms the ERC-20 payment" },
+  { label: "200 OK · Payload delivered", detail: "Resource streamed back to the agent" },
 ];
+
 
 export function useAgentEconomy() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -36,6 +40,9 @@ export function useAgentEconomy() {
   const [running, setRunning] = useState(false);
   const [faucetBalance, setFaucetBalance] = useState(0);
   const burstRef = useRef<Record<string, number[]>>({});
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+
 
   useEffect(() => {
     setTelemetry(seedTelemetry());
@@ -132,6 +139,41 @@ export function useAgentEconomy() {
       setRunning(true);
       setSteps(STEP_TEMPLATE.map((s) => ({ ...s, state: "pending" })));
 
+      const setStep = (i: number, patch: Partial<X402Step>) =>
+        setSteps((s) => s.map((st, idx) => (idx === i ? { ...st, ...patch } : st)));
+
+      const settle = (hash: string, note: string) => {
+        updateAgent(agent.id, {
+          spent: Number((agent.spent + service.price).toFixed(6)),
+          success: agent.success + 1,
+          status: "active",
+        });
+        pushLog({
+          id: nextId("tx"),
+          ts: Date.now(),
+          agentId: agent.id,
+          agentName: agent.name,
+          service: service.name,
+          amount: service.price,
+          status: "success",
+          hash,
+          note,
+        });
+        setFaucetBalance((b) => Number(Math.max(0, b - service.price).toFixed(6)));
+        setTelemetry((t) => {
+          const d = new Date();
+          const last = t[t.length - 1]?.spend ?? 0;
+          return [
+            ...t.slice(-23),
+            {
+              t: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+              spend: Number((last + service.price).toFixed(4)),
+              budget: agent.dailyLimit,
+            },
+          ];
+        });
+      };
+
       const now = Date.now();
       const key = `${agent.id}:${service.id}`;
       const hits = (burstRef.current[key] ?? []).filter((t) => now - t < 10_000);
@@ -140,29 +182,100 @@ export function useAgentEconomy() {
 
       const loopBreach = agent.loopProtection && hits.length > 5;
       const overBudget = agent.spent + service.price > agent.dailyLimit;
-      const blockedAt = loopBreach ? 1 : overBudget ? 2 : -1;
 
-      for (let i = 0; i < STEP_TEMPLATE.length; i++) {
-        setSteps((s) => s.map((st, idx) => (idx === i ? { ...st, state: "running" } : st)));
-        await new Promise((r) => setTimeout(r, 460));
-        if (i === blockedAt) {
-          setSteps((s) =>
-            s.map((st, idx) =>
-              idx === i
-                ? {
-                    ...st,
-                    state: "failed",
-                    detail: loopBreach
-                      ? "Loop protection tripped: >5 calls / 10s to same endpoint"
-                      : "Daily USDC budget exceeded — policy rejected the intent",
-                  }
-                : st,
-            ),
-          );
-          updateAgent(agent.id, {
-            blocked: agent.blocked + 1,
-            status: loopBreach ? "paused" : "rate-limited",
+      if (loopBreach || overBudget) {
+        setStep(loopBreach ? 1 : 2, {
+          state: "failed",
+          detail: loopBreach
+            ? "Loop protection tripped: >5 calls / 10s to same endpoint"
+            : "Daily USDC budget exceeded — policy rejected the intent",
+        });
+        updateAgent(agent.id, {
+          blocked: agent.blocked + 1,
+          status: loopBreach ? "paused" : "rate-limited",
+        });
+        pushLog({
+          id: nextId("tx"),
+          ts: Date.now(),
+          agentId: agent.id,
+          agentName: agent.name,
+          service: service.name,
+          amount: service.price,
+          status: "blocked",
+          hash: makeTxHash(),
+          note: loopBreach ? "Loop payment protection" : "Daily budget cap",
+        });
+        setRunning(false);
+        return;
+      }
+
+      // ---- Real x402 flow against the live API host ----
+      if (service.x402) {
+        const url = serviceUrl(service);
+        try {
+          if (!url.startsWith("http")) {
+            throw new Error("x402 API base URL is not configured");
+          }
+          setStep(0, { state: "running", detail: `GET ${url}` });
+          const first = await requestResource(url);
+
+          if (first.status === 200) {
+            setStep(0, { state: "done", detail: "200 OK — resource was not gated" });
+            setSteps((s) => s.map((st, i) => (i > 0 ? { ...st, state: "done" } : st)));
+            settle(makeTxHash(), "No payment required by the server");
+            setRunning(false);
+            return;
+          }
+          if (first.status !== 402) {
+            throw new Error(`Unexpected HTTP ${first.status} from the API`);
+          }
+          setStep(0, { state: "done", detail: "Server gated the resource" });
+
+          const challenge = parseChallenge(first.body);
+          if (!challenge) throw new Error("Could not parse the 402 payment challenge");
+          setStep(1, {
+            state: "done",
+            detail: `${challenge.amount} USDC → ${challenge.recipient.slice(0, 10)}…`,
           });
+
+          const asset = (challenge.asset ?? USDC_ADDRESS) as Address;
+          const value = parseUnits(challenge.amount, USDC_DECIMALS);
+
+          setStep(2, { state: "running", detail: "Awaiting wallet signature…" });
+          const txHash = await writeContractAsync({
+            address: asset,
+            abi: erc20Abi,
+            functionName: "transfer",
+            args: [challenge.recipient, value],
+          });
+          setStep(2, { state: "done", detail: `Signed · ${txHash.slice(0, 12)}…` });
+
+          setStep(3, { state: "running", detail: "Waiting for Base Sepolia confirmation…" });
+          const receipt = await publicClient?.waitForTransactionReceipt({ hash: txHash });
+          if (receipt && receipt.status === "reverted") throw new Error("Payment transaction reverted");
+          setStep(3, {
+            state: "done",
+            detail: `Confirmed in block ${receipt?.blockNumber?.toString() ?? "—"}`,
+          });
+
+          setStep(4, { state: "running", detail: "Retrying with x-payment-proof…" });
+          const second = await requestResource(url, txHash);
+          if (second.status !== 200) throw new Error(`Payment proof rejected (HTTP ${second.status})`);
+          const preview =
+            typeof second.body === "string"
+              ? second.body.slice(0, 80)
+              : JSON.stringify(second.body).slice(0, 80);
+          setStep(4, { state: "done", detail: preview });
+
+          settle(txHash, "Settled onchain via x402");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Execution failed";
+          setSteps((s) => {
+            const idx = s.findIndex((st) => st.state === "running");
+            const target = idx === -1 ? 0 : idx;
+            return s.map((st, i) => (i === target ? { ...st, state: "failed", detail: message } : st));
+          });
+          updateAgent(agent.id, { blocked: agent.blocked + 1 });
           pushLog({
             id: nextId("tx"),
             ts: Date.now(),
@@ -172,47 +285,25 @@ export function useAgentEconomy() {
             amount: service.price,
             status: "blocked",
             hash: makeTxHash(),
-            note: loopBreach ? "Loop payment protection" : "Daily budget cap",
+            note: message.slice(0, 60),
           });
-          setRunning(false);
-          return;
         }
-        setSteps((s) => s.map((st, idx) => (idx === i ? { ...st, state: "done" } : st)));
+        setRunning(false);
+        return;
       }
 
-      updateAgent(agent.id, {
-        spent: Number((agent.spent + service.price).toFixed(6)),
-        success: agent.success + 1,
-        status: "active",
-      });
-      pushLog({
-        id: nextId("tx"),
-        ts: Date.now(),
-        agentId: agent.id,
-        agentName: agent.name,
-        service: service.name,
-        amount: service.price,
-        status: "success",
-        hash: makeTxHash(),
-        note: agent.paymaster ? "Gas sponsored by Paymaster" : "Gas paid in USDC",
-      });
-      setFaucetBalance((b) => Number(Math.max(0, b - service.price).toFixed(6)));
-      setTelemetry((t) => {
-        const d = new Date();
-        const last = t[t.length - 1]?.spend ?? 0;
-        return [
-          ...t.slice(-23),
-          {
-            t: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
-            spend: Number((last + service.price).toFixed(4)),
-            budget: agent.dailyLimit,
-          },
-        ];
-      });
+      // ---- Services without a live x402 host: stepped local trace ----
+      for (let i = 0; i < STEP_TEMPLATE.length; i++) {
+        setStep(i, { state: "running" });
+        await new Promise((r) => setTimeout(r, 460));
+        setStep(i, { state: "done" });
+      }
+      settle(makeTxHash(), agent.paymaster ? "Gas sponsored by Paymaster" : "Gas paid in USDC");
       setRunning(false);
     },
-    [pushLog, running, updateAgent],
+    [publicClient, pushLog, running, updateAgent, writeContractAsync],
   );
+
 
   return {
     faucetBalance,

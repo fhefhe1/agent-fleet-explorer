@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, CircleDashed, Loader2, Play, ShoppingBag, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SERVICES, type Agent, type ApiService } from "@/lib/agent-sim";
+import { SERVICES, serviceUrl, type Agent, type ApiService } from "@/lib/agent-sim";
+import { setX402BaseUrl, x402BaseUrl } from "@/lib/x402";
 import type { X402Step } from "@/hooks/use-agent-economy";
+
 
 export function Marketplace({
   agent,
@@ -20,6 +22,9 @@ export function Marketplace({
 }) {
   const [selected, setSelected] = useState<string>(SERVICES[0]!.id);
   const service = SERVICES.find((s) => s.id === selected)!;
+  const [host, setHost] = useState("");
+  useEffect(() => setHost(x402BaseUrl()), []);
+
 
   return (
     <section className="panel p-5">
@@ -52,9 +57,10 @@ export function Marketplace({
                   {s.price} USDC/call
                 </span>
               </div>
-              <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                {s.endpoint} · p50 {s.latency}
+              <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                {serviceUrl(s)} · p50 {s.latency}
               </p>
+
             </button>
           ))}
         </div>
@@ -77,6 +83,23 @@ export function Marketplace({
           <p className="mt-2 font-mono text-[11px] text-muted-foreground">
             {gate ?? (agent ? `${agent.name} → ${service.name}` : "Select an agent")}
           </p>
+
+          {service.x402 && (
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                onBlur={() => setX402BaseUrl(host)}
+                placeholder="https://your-tunnel.ngrok-free.app"
+                aria-label="x402 API host"
+                className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary/60"
+              />
+              <Button size="sm" variant="outline" onClick={() => setX402BaseUrl(host)}>
+                Save host
+              </Button>
+            </div>
+          )}
+
 
           <ol className="mt-4 space-y-3">
             {(steps.length ? steps : placeholderSteps()).map((s, i) => (
