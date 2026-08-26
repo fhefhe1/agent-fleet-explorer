@@ -79,6 +79,23 @@ export function Marketplace({
             {gate ?? (agent ? `${agent.name} → ${service.name}` : "Select an agent")}
           </p>
 
+          {service.x402 && (
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                onBlur={() => setX402BaseUrl(host)}
+                placeholder="https://your-tunnel.ngrok-free.app"
+                aria-label="x402 API host"
+                className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary/60"
+              />
+              <Button size="sm" variant="outline" onClick={() => setX402BaseUrl(host)}>
+                Save host
+              </Button>
+            </div>
+          )}
+
+
           <ol className="mt-4 space-y-3">
             {(steps.length ? steps : placeholderSteps()).map((s, i) => (
               <li key={i} className="flex gap-3">
