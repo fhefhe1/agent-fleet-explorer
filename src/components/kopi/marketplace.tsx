@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, CircleDashed, Loader2, Play, ShoppingBag, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SERVICES, type Agent, type ApiService } from "@/lib/agent-sim";
+import { SERVICES, serviceUrl, type Agent, type ApiService } from "@/lib/agent-sim";
 import type { X402Step } from "@/hooks/use-agent-economy";
 
 export function Marketplace({
