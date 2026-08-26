@@ -76,11 +76,13 @@ export const SERVICES: ApiService[] = [
   {
     id: "svc-scraper",
     name: "Web Scraper API",
-    endpoint: "https://api.kopicat.dev/v1/scrape",
+    endpoint: "/v1/scrape",
     price: 0.001,
     latency: "230ms",
     category: "Data",
+    x402: true,
   },
+
   {
     id: "svc-serp",
     name: "SerpData API",
