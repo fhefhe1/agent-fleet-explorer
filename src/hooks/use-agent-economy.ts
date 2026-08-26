@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseUnits, type Address } from "viem";
-import { usePublicClient, useWriteContract } from "wagmi";
-import { erc20Abi, predictSmartAccount, USDC_ADDRESS, USDC_DECIMALS } from "@/lib/web3";
-import { parseChallenge, requestResource } from "@/lib/x402";
+import { usePublicClient, useSignTypedData } from "wagmi";
+import { useAccount } from "wagmi";
+import { erc20Abi, USDC_ADDRESS, USDC_DECIMALS, USDC_EIP712_DOMAIN, TARGET_CHAIN_ID } from "@/lib/web3";
+import {
+  parseChallenge,
+  requestResource,
+  buildEIP712TypedData,
+  encodeX402PaymentHeader,
+  type EIP3009Authorization,
+  type X402PaymentPayload,
+} from "@/lib/x402";
 import {
   makeTxHash,
   makeWallet,
@@ -26,11 +34,21 @@ export interface X402Step {
 const STEP_TEMPLATE: Array<{ label: string; detail: string }> = [
   { label: "HTTP GET", detail: "Agent requests the protected resource" },
   { label: "402 Payment Required", detail: "Server replies with x402 payment challenge" },
-  { label: "Wallet Signed", detail: "Owner signs the USDC transfer in the wallet" },
-  { label: "Onchain Settlement", detail: "Base Sepolia confirms the ERC-20 payment" },
+  { label: "EIP-3009 Authorization", detail: "Owner signs the authorization (off-chain, no gas)" },
+  { label: "Retried with X-PAYMENT", detail: "Request resent with payment header" },
   { label: "200 OK · Payload delivered", detail: "Resource streamed back to the agent" },
 ];
 
+/**
+ * Generate a cryptographically random 32-byte nonce for EIP-3009.
+ * Each authorization must have a unique nonce to prevent replay attacks.
+ */
+function generateRandomNonce(): `0x${string}` {
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+  return `0x${Array.from(nonceBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")}` as `0x${string}`;
+}
 
 export function useAgentEconomy() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -41,8 +59,8 @@ export function useAgentEconomy() {
   const [faucetBalance, setFaucetBalance] = useState(0);
   const burstRef = useRef<Record<string, number[]>>({});
   const publicClient = usePublicClient();
-  const { writeContractAsync } = useWriteContract();
-
+  const { address: connectedAddress } = useAccount();
+  const { signTypedDataAsync } = useSignTypedData();
 
   useEffect(() => {
     setTelemetry(seedTelemetry());
@@ -93,7 +111,7 @@ export function useAgentEconomy() {
       const salt = BigInt(Date.now());
       const smartAccount =
         owner && owner.startsWith("0x") && owner.length === 42
-          ? predictSmartAccount(owner as Address, salt)
+          ? (owner as Address)
           : makeWallet();
       const agent: Agent = {
         id: nextId("agt"),
@@ -209,13 +227,15 @@ export function useAgentEconomy() {
         return;
       }
 
-      // ---- Real x402 flow against the live API host ----
+      // ---- Spec-compliant x402 flow against the live API host ----
       if (service.x402) {
         const url = serviceUrl(service);
         try {
           if (!url.startsWith("http")) {
             throw new Error("x402 API base URL is not configured");
           }
+
+          // Step 1: GET request
           setStep(0, { state: "running", detail: `GET ${url}` });
           const first = await requestResource(url);
 
@@ -226,48 +246,102 @@ export function useAgentEconomy() {
             setRunning(false);
             return;
           }
+
           if (first.status !== 402) {
             throw new Error(`Unexpected HTTP ${first.status} from the API`);
           }
           setStep(0, { state: "done", detail: "Server gated the resource" });
 
-          const challenge = parseChallenge(first.body);
-          if (!challenge) throw new Error("Could not parse the 402 payment challenge");
+          // Step 2: Parse 402 challenge
+          const requirement = parseChallenge(first.body);
+          if (!requirement) throw new Error("Could not parse the 402 payment challenge");
           setStep(1, {
             state: "done",
-            detail: `${challenge.amount} USDC → ${challenge.recipient.slice(0, 10)}…`,
+            detail: `${requirement.maxAmountRequired} USDC → ${requirement.payTo.slice(0, 10)}…`,
           });
 
-          const asset = (challenge.asset ?? USDC_ADDRESS) as Address;
-          const value = parseUnits(challenge.amount, USDC_DECIMALS);
+          // Step 3: Sign EIP-3009 authorization (off-chain, no gas)
+          if (!connectedAddress) {
+            throw new Error("Wallet not connected");
+          }
 
           setStep(2, { state: "running", detail: "Awaiting wallet signature…" });
-          const txHash = await writeContractAsync({
-            address: asset,
-            abi: erc20Abi,
-            functionName: "transfer",
-            args: [challenge.recipient, value],
-          });
-          setStep(2, { state: "done", detail: `Signed · ${txHash.slice(0, 12)}…` });
 
-          setStep(3, { state: "running", detail: "Waiting for Base Sepolia confirmation…" });
-          const receipt = await publicClient?.waitForTransactionReceipt({ hash: txHash });
-          if (receipt && receipt.status === "reverted") throw new Error("Payment transaction reverted");
-          setStep(3, {
-            state: "done",
-            detail: `Confirmed in block ${receipt?.blockNumber?.toString() ?? "—"}`,
-          });
+          const value = parseUnits(requirement.maxAmountRequired, USDC_DECIMALS);
+          const nowSecs = Math.floor(Date.now() / 1000);
+          const validAfter = nowSecs;
+          const validBefore = nowSecs + 3600; // 1 hour validity window
 
-          setStep(4, { state: "running", detail: "Retrying with x-payment-proof…" });
-          const second = await requestResource(url, txHash);
-          if (second.status !== 200) throw new Error(`Payment proof rejected (HTTP ${second.status})`);
+          // Generate a cryptographically random nonce (not derived from request params)
+          const nonce = generateRandomNonce();
+
+          const auth: EIP3009Authorization = {
+            from: connectedAddress,
+            to: requirement.payTo,
+            value: value.toString(),
+            validAfter,
+            validBefore,
+            nonce,
+          };
+
+          const typedData = buildEIP712TypedData(auth, USDC_EIP712_DOMAIN);
+          const signature = await signTypedDataAsync(typedData as any);
+
+          setStep(2, { state: "done", detail: `Signed · ${signature.slice(0, 12)}…` });
+
+          // Step 4: Build X-PAYMENT header and retry
+          setStep(3, { state: "running", detail: "Retrying with X-PAYMENT header…" });
+
+          const paymentPayload: X402PaymentPayload = {
+            x402Version: "2.0",
+            scheme: requirement.scheme, // Now defaults to "exact" per spec
+            network: requirement.network,
+            payload: {
+              signature,
+              authorization: auth,
+            },
+          };
+
+          const paymentHeader = encodeX402PaymentHeader(paymentPayload);
+          const second = await requestResource(url, paymentHeader);
+
+          if (second.status !== 200) {
+            throw new Error(`Payment proof rejected (HTTP ${second.status})`);
+          }
+
+          // Step 5: Success — extract settlement tx hash from X-PAYMENT-RESPONSE
+          let settlementHash = "pending-offchain-verification";
+          let settlementNote = "Settlement awaiting facilitator confirmation";
+
+          if (second.paymentResponse) {
+            const txHash = second.paymentResponse.transactionHash;
+            if (txHash) {
+              settlementHash = txHash;
+              settlementNote = `Settled via x402 facilitator (tx: ${txHash.slice(0, 10)}…)`;
+            } else {
+              // Response exists but no tx hash; treat as pending off-chain
+              console.warn(
+                "[x402] X-PAYMENT-RESPONSE received but no transactionHash field:",
+                second.paymentResponse,
+              );
+            }
+          } else if (second.paymentResponse === null) {
+            // Header was missing or unparseable
+            console.warn(
+              "[x402] No X-PAYMENT-RESPONSE header or failed to parse; settlement may be off-chain",
+            );
+          }
+
           const preview =
             typeof second.body === "string"
               ? second.body.slice(0, 80)
               : JSON.stringify(second.body).slice(0, 80);
-          setStep(4, { state: "done", detail: preview });
+          setStep(4, {
+            state: "done",
+            detail: preview,
+          });
 
-          settle(txHash, "Settled onchain via x402");
+          settle(settlementHash, settlementNote);
         } catch (err) {
           const message = err instanceof Error ? err.message : "Execution failed";
           setSteps((s) => {
@@ -301,9 +375,8 @@ export function useAgentEconomy() {
       settle(makeTxHash(), agent.paymaster ? "Gas sponsored by Paymaster" : "Gas paid in USDC");
       setRunning(false);
     },
-    [publicClient, pushLog, running, updateAgent, writeContractAsync],
+    [connectedAddress, publicClient, pushLog, running, signTypedDataAsync, updateAgent],
   );
-
 
   return {
     faucetBalance,
