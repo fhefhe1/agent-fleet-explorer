@@ -3,7 +3,9 @@ import { CheckCircle2, CircleDashed, Loader2, Play, ShoppingBag, XCircle } from 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SERVICES, serviceUrl, type Agent, type ApiService } from "@/lib/agent-sim";
+import { setX402BaseUrl, x402BaseUrl } from "@/lib/x402";
 import type { X402Step } from "@/hooks/use-agent-economy";
+
 
 export function Marketplace({
   agent,
@@ -20,6 +22,9 @@ export function Marketplace({
 }) {
   const [selected, setSelected] = useState<string>(SERVICES[0]!.id);
   const service = SERVICES.find((s) => s.id === selected)!;
+  const [host, setHost] = useState("");
+  useEffect(() => setHost(x402BaseUrl()), []);
+
 
   return (
     <section className="panel p-5">
