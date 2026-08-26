@@ -22,7 +22,10 @@ export interface ApiService {
   price: number;
   latency: string;
   category: string;
+  /** Settled through the real x402 flow against the live API host. */
+  x402?: boolean;
 }
+
 
 export interface TxLog {
   id: string;
