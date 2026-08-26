@@ -40,6 +40,9 @@ export function useAgentEconomy() {
   const [running, setRunning] = useState(false);
   const [faucetBalance, setFaucetBalance] = useState(0);
   const burstRef = useRef<Record<string, number[]>>({});
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+
 
   useEffect(() => {
     setTelemetry(seedTelemetry());
