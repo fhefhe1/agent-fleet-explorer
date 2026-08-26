@@ -52,9 +52,10 @@ export function Marketplace({
                   {s.price} USDC/call
                 </span>
               </div>
-              <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                {s.endpoint} · p50 {s.latency}
+              <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                {serviceUrl(s)} · p50 {s.latency}
               </p>
+
             </button>
           ))}
         </div>
