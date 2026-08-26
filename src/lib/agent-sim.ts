@@ -1,3 +1,5 @@
+import { x402Url } from "@/lib/x402";
+
 export type AgentStatus = "active" | "paused" | "rate-limited";
 
 export interface Agent {
@@ -130,4 +132,9 @@ export function seedTelemetry(): TelemetryPoint[] {
     });
   }
   return pts;
+}
+
+/** Absolute URL for a service; x402 services resolve against the live API host. */
+export function serviceUrl(s: ApiService): string {
+  return s.x402 ? x402Url(s.endpoint) : s.endpoint;
 }
