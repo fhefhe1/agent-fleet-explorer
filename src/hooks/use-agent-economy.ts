@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { predictSmartAccount } from "@/lib/web3";
-import type { Address } from "viem";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
+import { erc20Abi, predictSmartAccount, USDC_ADDRESS, USDC_DECIMALS } from "@/lib/web3";
+import { parseChallenge, requestResource } from "@/lib/x402";
 import {
   makeTxHash,
   makeWallet,
   seedTelemetry,
+  serviceUrl,
   type Agent,
   type ApiService,
   type TelemetryPoint,
@@ -23,10 +26,11 @@ export interface X402Step {
 const STEP_TEMPLATE: Array<{ label: string; detail: string }> = [
   { label: "HTTP GET", detail: "Agent requests the protected resource" },
   { label: "402 Payment Required", detail: "Server replies with x402 payment challenge" },
-  { label: "EIP-712 Signature", detail: "Agent signs the micro-payment intent offchain" },
-  { label: "UserOperation → Bundler", detail: "ERC-4337 op sponsored by Paymaster" },
-  { label: "200 OK · Payload unlocked", detail: "Resource streamed back to the agent" },
+  { label: "Wallet Signed", detail: "Owner signs the USDC transfer in the wallet" },
+  { label: "Onchain Settlement", detail: "Base Sepolia confirms the ERC-20 payment" },
+  { label: "200 OK · Payload delivered", detail: "Resource streamed back to the agent" },
 ];
+
 
 export function useAgentEconomy() {
   const [agents, setAgents] = useState<Agent[]>([]);
